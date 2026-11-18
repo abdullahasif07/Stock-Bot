@@ -1,9 +1,10 @@
+import os
 import requests
 import json
 
 
 
-API_KEY = "KLCQOV1OMS6GTGZT"
+API_KEY = os.environ.get("ALPHA_VANTAGE_API_KEY")
 BASE_URL = "https://www.alphavantage.co/query"
 
 def pretty_print_json(data):

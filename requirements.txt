@@ -1,37 +1,19 @@
-# Core web framework
-fastapi==0.115.6
-uvicorn==0.34.0
-python-dotenv==1.0.1
-python-multipart>=0.0.6
-pydantic==2.10.4
+# Web
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+python-dotenv>=1.0,<2.0
+python-multipart>=0.0.9
+pydantic>=2.7,<3.0
 
-# Authentication
-firebase-admin==6.6.0
-PyJWT==2.10.1
+# LLM (current Google Gen AI SDK; replaces deprecated google-generativeai)
+google-genai>=1.20,<4.0
 
-# Google AI (langchain-google-genai requires >=0.8.0)
-google-generativeai>=0.8.0,<0.9.0
+# RAG: local ONNX embeddings (no torch), hybrid retrieval
+fastembed>=0.5,<1.0
+numpy>=1.26
+rank-bm25>=0.2.2,<0.3
 
-# LangChain (for RAG pipeline)
-langchain==0.3.13
-langchain-google-genai==2.0.7
-langchain-community==0.3.13
-langchain-text-splitters==0.3.4
-faiss-cpu==1.9.0.post1
-
-# Numerics (torch 2.2.x needs numpy <2)
-numpy>=1.26.0,<2.0.0
-
-# Local embeddings (free, no API limits)
-langchain-huggingface>=0.1.0
-sentence-transformers>=2.2.0
-torch>=2.2.0,<2.4.0
-transformers>=4.36.0,<5.0.0
-
-# Stock data APIs
-requests==2.32.3
-sec-api==1.0.25
-
-# HTML parsing
-beautifulsoup4==4.12.3
-lxml==5.3.0
+# Documents / HTTP
+requests>=2.32,<3.0
+lxml>=5.0
+pypdf>=4.0
