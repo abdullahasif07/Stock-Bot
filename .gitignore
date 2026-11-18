@@ -1,47 +1,35 @@
-# .gitignore
-
-# Ignore all node_modules in any subfolder
+# Dependencies / builds
 **/node_modules/
-
-# Ignore build files
 **/build/
 **/dist/
-
-# Mac system files
-.DS_Store
-
-# Log files
-*.log
-
-# Environment files
-.env
-.env.local
-.env.*.local
-backend/.env
-react-frontend/.env
-
-# Firebase keys
-backend/firestore-key.json
-backend/firebase-key.json
 
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
+.pytest_cache/
 stockbot_env/
 venv/
+.venv/
 env/
 
-# Generated docs
-DEPLOYMENT.md
-DEPLOYMENT_CHECKLIST.md
-FIREBASE_SETUP.md
-SETUP_GUIDE.md
+# Secrets
+.env
+.env.local
+.env.*.local
+**/.env
+*firebase-key*.json
+*firestore-key*.json
 
-# IDE
+# Runtime data (generated: caches, embeddings model, indexes, downloaded filings)
+backend/data/cache/
+backend/data/indexes/
+backend/data/models/
+backend/data/filings/*
+!backend/data/filings/AMZN_bundled.txt
+
+# OS / IDE
+.DS_Store
+*.log
 .vscode/
 .idea/
 *.swp
-*.swo
