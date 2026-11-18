@@ -1,0 +1,13 @@
+# Copy to /opt/caddy-sites/stockbot.caddy on the server, then reload Caddy:
+#   docker exec talentflow-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+#
+# Swap the hostname for a real domain later (and add an A record for it).
+stockbot.178.105.95.25.sslip.io {
+	request_body {
+		max_size 6MB
+	}
+	# No `encode` here and flush immediately: chat answers are streamed.
+	reverse_proxy stockbot:8000 {
+		flush_interval -1
+	}
+}

@@ -1,0 +1,41 @@
+# StockBot on a shared Docker host behind an existing Caddy container.
+#
+#   cd /opt/stockbot
+#   docker compose -f deploy/compose.prod.yaml up -d --build   # build on the server
+#   # or, with the GitHub Actions image:
+#   docker compose -f deploy/compose.prod.yaml pull && docker compose -f deploy/compose.prod.yaml up -d
+#
+# No host ports are published: Caddy reaches the app over the shared Docker
+# network at http://stockbot:8000.
+
+name: stockbot
+
+services:
+  stockbot:
+    image: ghcr.io/abdullahasif07/stock-bot:latest
+    build:
+      context: ..
+    env_file: ../.env
+    environment:
+      PORT: "8000"
+      TRUSTED_PROXY_HOPS: "1"   # Caddy sets X-Forwarded-For to the real client IP
+    restart: unless-stopped
+    mem_limit: 1200m
+    volumes:
+      # Caches, downloaded filings, embeddings model and 10-K indexes.
+      # On first creation Docker seeds it with the pre-built data from the image.
+      - stockbot_data:/app/backend/data
+    networks:
+      edge:
+        aliases: [stockbot]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  stockbot_data:
+
+networks:
+  edge:
+    name: talentflow_default   # the network the shared Caddy container is on
+    external: true
