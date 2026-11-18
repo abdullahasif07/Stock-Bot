@@ -1,108 +1,94 @@
+"""Chat orchestration. Stateless: the browser keeps the conversation and sends
+the last few messages with each request.
+
+LLM cost per message: 1 intent call + 1 streamed answer (previously up to
+5 calls: intent twice, history summarisation twice, plus the answer)."""
 import asyncio
+import json
+import re
+from typing import AsyncIterator
 
-from . import gemini_service, stock_service
-from ..db import chat_repository
-from ..constants import (
-    MSG_INTERNAL_ERROR,
-    MSG_NO_PRICE_DATA,
-    MSG_NO_PREDICTION_DATA,
-    MSG_NEED_STOCK_NAME,
-    MSG_CLARIFICATION,
-    MSG_UNKNOWN_REQUEST,
-)
+from ..constants import MSG_CLARIFICATION, MSG_NEED_STOCK_NAME, MSG_NO_PRICE_DATA, MSG_NO_PREDICTION_DATA
+from ..prompts import gemini as prompts
+from ..utils import gemini
+from . import sec_service, stock_service
 
-
-def is_likely_ticker(s):
-    if not isinstance(s, str):
-        return False
-    return s.isupper() and ' ' not in s and 1 <= len(s) <= 5
+TICKER_RE = re.compile(r"^[A-Z]{1,5}([.\-][A-Z]{1,2})?$")
+STOCK_INTENTS = {"get_specific_data", "get_prediction_or_advice"}
 
 
-async def check_clarification_needed(user_message, history, context):
-    """Returns a clarification dict if disambiguation is needed, else None."""
-    if context.get('awaiting_clarification'):
-        return None
+async def _single(text: str) -> AsyncIterator[str]:
+    yield text
 
-    intent_data = await asyncio.to_thread(gemini_service.get_intent, user_message, history)
-    intent = intent_data.get("intent", "general_knowledge")
+
+async def resolve_ticker(entity: str | None, ticker_guess: str | None) -> tuple[str | None, list[dict]]:
+    """Return (ticker, clarification_choices). Uses the free SEC directory first
+    and only falls back to Alpha Vantage search when SEC has no match."""
+    # The LLM's own guess (e.g. Google -> GOOGL), or an uppercase ticker the user typed.
+    for candidate in (ticker_guess, entity if entity and entity.isupper() else None):
+        if candidate and TICKER_RE.match(candidate.strip().upper()):
+            if await asyncio.to_thread(sec_service.lookup_ticker, candidate):
+                return candidate.strip().upper(), []
+    if not entity:
+        return None, []
+    confident, candidates = await asyncio.to_thread(sec_service.resolve_company, entity)
+    if confident:
+        return confident["ticker"], []
+    if len(candidates) > 1:
+        return None, [{"symbol": c["ticker"], "name": c["name"]} for c in candidates]
+    av = await asyncio.to_thread(stock_service.search_ticker_symbols, entity)
+    if len(av) == 1:
+        return av[0]["symbol"], []
+    return None, av
+
+
+async def handle_message(message: str, history: list[dict], context: dict):
+    """Returns ("clarification", dict) or ("stream", async iterator)."""
+    history_text = gemini.format_history(history)
+
+    if context.get("awaiting_clarification"):
+        intent = context.get("original_intent", "get_specific_data")
+        ticker = message.strip().upper()
+        if not TICKER_RE.match(ticker):
+            return "stream", _single("Please pick one of the suggested tickers.")
+        return "stream", _stock_answer(intent, ticker, ticker, message)
+
+    intent_data = await gemini.generate_json(prompts.intent_classification(history_text, message))
+    intent = intent_data.get("intent") or "general_knowledge"
     entity = intent_data.get("entity")
 
-    if intent in ['get_specific_data', 'get_prediction_or_advice'] and entity:
-        matches = await asyncio.to_thread(stock_service.search_ticker_symbols, entity)
-        if matches and len(matches) > 1 and not is_likely_ticker(entity):
-            return {
+    if intent in STOCK_INTENTS:
+        if not entity and not intent_data.get("ticker"):
+            return "stream", _single(MSG_NEED_STOCK_NAME)
+        ticker, choices = await resolve_ticker(entity, intent_data.get("ticker"))
+        if not ticker and choices:
+            return "clarification", {
                 "response_type": "clarification",
                 "message": MSG_CLARIFICATION.format(entity=entity),
-                "choices": matches,
+                "choices": choices,
                 "original_intent": intent,
             }
-    return None
+        if not ticker:
+            return "stream", _single(f"I couldn't find a US-listed ticker for \"{entity}\".")
+        return "stream", _stock_answer(intent, ticker, entity or ticker, message)
+
+    return "stream", gemini.stream(prompts.general_response(history_text, message),
+                                   system=prompts.ASSISTANT_SYSTEM, temperature=0.5)
 
 
-def _proceed_with_intent(intent, ticker, entity):
-    """Handle non-streaming intents that return a generator."""
-    if intent == "get_specific_data":
-        quote_data = stock_service.get_stock_quote(ticker)
-        if not quote_data:
-            return iter([MSG_NO_PRICE_DATA.format(ticker=ticker)])
-        return gemini_service.generate_response_from_quote(entity, quote_data)
-    return iter([MSG_UNKNOWN_REQUEST])
-
-
-async def build_chat_response(user_message, context, history, user_id, chat_id):
-    """Async generator — yields response chunks and persists the full reply."""
-    full_response = ""
-    generator = None
-
-    try:
-        if context.get('awaiting_clarification'):
-            intent = context.get('original_intent')
-            ticker = user_message
-            if intent == 'get_prediction_or_advice':
-                prediction_data = await asyncio.to_thread(stock_service.get_prediction_data, ticker)
-                if not prediction_data:
-                    generator = iter([MSG_NO_PREDICTION_DATA.format(ticker=ticker)])
-                else:
-                    generator = gemini_service.generate_prediction_response(prediction_data, user_message)
-            else:
-                generator = _proceed_with_intent(intent, ticker, ticker)
-        else:
-            intent_data = await asyncio.to_thread(gemini_service.get_intent, user_message, history)
-            intent = intent_data.get("intent", "general_knowledge")
-            entity = intent_data.get("entity")
-
-            if intent in ['get_specific_data', 'get_prediction_or_advice']:
-                if not entity:
-                    generator = iter([MSG_NEED_STOCK_NAME])
-                else:
-                    if is_likely_ticker(entity):
-                        ticker = entity
-                    else:
-                        matches = await asyncio.to_thread(stock_service.search_ticker_symbols, entity)
-                        ticker = matches[0]['symbol']
-
-                    if intent == 'get_specific_data':
-                        generator = _proceed_with_intent(intent, ticker, entity)
-                    elif intent == 'get_prediction_or_advice':
-                        prediction_data = await asyncio.to_thread(stock_service.get_prediction_data, ticker)
-                        if not prediction_data:
-                            generator = iter([MSG_NO_PREDICTION_DATA.format(ticker=ticker)])
-                        else:
-                            generator = gemini_service.generate_prediction_response(prediction_data, user_message)
-            else:
-                generator = gemini_service.generate_grounded_response(user_message, history)
-
-        for chunk in generator:
-            full_response += chunk
+async def _stock_answer(intent: str, ticker: str, label: str, message: str) -> AsyncIterator[str]:
+    if intent == "get_prediction_or_advice":
+        data = await asyncio.to_thread(stock_service.get_prediction_data, ticker)
+        if not data:
+            yield MSG_NO_PREDICTION_DATA.format(ticker=ticker)
+            return
+        async for chunk in gemini.stream(prompts.prediction_analysis(data, message), temperature=0.4):
             yield chunk
+        return
 
-        await asyncio.to_thread(
-            chat_repository.add_message_to_chat, user_id, chat_id, "model", full_response
-        )
-
-    except Exception as e:
-        print(f"[CHAT] Error during processing: {type(e).__name__} - {e}")
-        yield MSG_INTERNAL_ERROR
-        await asyncio.to_thread(
-            chat_repository.add_message_to_chat, user_id, chat_id, "model", MSG_INTERNAL_ERROR
-        )
+    quote = await asyncio.to_thread(stock_service.get_stock_quote, ticker)
+    if not quote:
+        yield MSG_NO_PRICE_DATA.format(ticker=ticker)
+        return
+    async for chunk in gemini.stream(prompts.quote_response(f"{label} ({ticker})", json.dumps(quote))):
+        yield chunk

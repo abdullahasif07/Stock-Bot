@@ -1,79 +1,55 @@
-"""All prompt templates used by gemini_service."""
+"""Prompt templates for the general chat assistant."""
 
 from ..constants import PREDICTION_DISCLAIMER, FINANCIAL_DISCLAIMER
 
-
-def chat_title(message_text: str) -> str:
-    return (
-        f'Generate a concise title, not more than 5 words, for the following message:\n\n'
-        f'Message: "{message_text}"\n\n'
-        f'The title should be short, descriptive, and capture the essence of the message.\n\nTitle:'
-    )
+ASSISTANT_SYSTEM = f"""You are StockBot, a concise, friendly financial assistant. \
+Explain clearly using markdown. You do not have live data unless it is provided in the prompt; \
+if asked for real-time figures you weren't given, say so. \
+If you give anything resembling investment advice, end with: "{FINANCIAL_DISCLAIMER}" """
 
 
-def conversation_summary(history_text: str) -> str:
-    return (
-        f"Concisely summarize the key points of the following conversation "
-        f"into a single paragraph. This summary will be used as context for an ongoing chat.\n\n"
-        f"Conversation:\n{history_text}"
-    )
+def intent_classification(history_text: str, user_prompt: str) -> str:
+    return f"""Classify the user's LATEST message for a stock-market assistant.
 
+INTENTS:
+- "get_specific_data": wants CURRENT market data (price, change, volume, open/close) for one company.
+- "get_prediction_or_advice": wants a forecast, outlook, valuation opinion, or buy/sell/hold view on one company.
+- "get_qualitative_analysis": wants an explanation of past events, business model, trends, or comparisons.
+- "general_knowledge": general finance concepts, greetings, or anything else.
 
-def intent_classification(context_summary: str, history_text: str, user_prompt: str) -> str:
-    return f"""You are an intent classifier for a stock-focused assistant. Your goal is to categorize the user's LATEST query into one of the following intents.
-
-INTENT TYPES:
-- 'get_specific_data': The user is asking for CURRENT, real-time stock data (price, open, close, volume, etc.) for a single company.
-- 'get_qualitative_analysis': The user is asking for an explanation of PAST events, reasoning, or trends.
-- 'get_prediction_or_advice': The user is asking for a FUTURE prediction, forecast, opinion, or advice about a stock.
-- 'general_knowledge': The user is asking about general financial concepts (e.g., "What is a dividend?")
-
-Return only a JSON object with:
-- "intent": one of the four intent values above
-- "entity": company name or stock ticker mentioned, or null
-
-{context_summary}
+Return JSON: {{"intent": <one of the above>, "entity": <company name or ticker the user refers to, \
+resolving pronouns from the conversation, or null>, "ticker": <the primary US ticker for that entity \
+if you are confident, e.g. "GOOGL" for Google, else null>}}
 
 RECENT CONVERSATION:
-{history_text}
+{history_text or "(none)"}
 
-LAST User Query: "{user_prompt}"
-
-JSON Output:
+LATEST MESSAGE: "{user_prompt}"
 """
 
 
-def prediction_analysis(prediction_data: dict, user_prompt: str) -> str:
-    return f"""You are an expert financial analyst. Your task is to provide a stock price prediction based ONLY on the recently fetched technical and fundamental data.
+def prediction_analysis(data: dict, user_prompt: str) -> str:
+    rows = "\n".join(f"- {k.replace('_', ' ')}: {v}" for k, v in data.items())
+    return f"""The user asked: "{user_prompt}"
 
-**User's Original Question:** "{user_prompt}"
+Recently fetched market data (Alpha Vantage):
+{rows}
 
-**Analyze the following data for {prediction_data.get('company_name', 'this company')}:**
-- P/E Ratio: {prediction_data.get('pe_ratio', 'N/A')}
-- Earnings Per Share (EPS): {prediction_data.get('eps', 'N/A')}
-- 12-Month Analyst Target Price: {prediction_data.get('analyst_target_price', 'N/A')}
-- Current Stock Price: {prediction_data.get('current_price', 'N/A')}
-- Relative Strength Index (RSI): {prediction_data.get('rsi', 'N/A')}
-- 50-Day Simple Moving Average (SMA): {prediction_data.get('sma_50', 'N/A')}
-- 200-Day Simple Moving Average (SMA): {prediction_data.get('sma_200', 'N/A')}
-
-Provide your analysis in markdown format. Conclude with: "{PREDICTION_DISCLAIMER}"
-"""
-
-
-def grounded_response(summary_section: str, history_text: str, user_prompt: str) -> str:
-    return f"""{summary_section}RECENT CONVERSATION:
-{history_text}
-
-{user_prompt}
-
-IMPORTANT: If this query asks for any form of financial suggestion or advice, conclude your response with: '{FINANCIAL_DISCLAIMER}'
-"""
+Write a balanced outlook using ONLY this data: valuation (P/E vs growth/margins), trend \
+(price vs 50/200-day averages, 1m/3m returns), momentum (RSI-14: >70 overbought, <30 oversold), \
+and the analyst target vs last close. Give a short bull case, bear case, and an overall stance \
+(bullish/neutral/bearish) with a confidence level. Use markdown headings and bullets. \
+End with: "{PREDICTION_DISCLAIMER}" """
 
 
 def quote_response(company: str, quote_json: str) -> str:
     return (
-        f"A user asked for the stock price of {company}.\n"
-        f'Using the latest market data below, formulate a friendly and clear response starting with, "Based on the latest data,".\n'
-        f"Data: {quote_json}"
+        f"The user asked about {company}. Using ONLY this Alpha Vantage quote, give a short, friendly "
+        f"summary starting with \"Based on the latest data\", including price, daily change, the day's "
+        f"range, volume and the trading day. Use a compact markdown table.\nQuote: {quote_json}"
     )
+
+
+def general_response(history_text: str, user_prompt: str) -> str:
+    history_block = f"RECENT CONVERSATION:\n{history_text}\n\n" if history_text else ""
+    return f"{history_block}USER: {user_prompt}"
