@@ -1,0 +1,16 @@
+.git
+**/node_modules
+**/dist
+**/__pycache__
+stockbot_env
+venv
+.venv
+**/.env
+backend/data/cache
+backend/data/indexes
+backend/data/models
+backend/data/filings/*_*-*.txt*
+api_tests
+*.png
+*.md
+!react-frontend/**/*.md
