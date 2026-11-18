@@ -56,7 +56,7 @@ def fake_gemini(monkeypatch):
         for part in ["Revenue grew ", "strongly [1]."]:
             yield part
 
-    async def generate_json(prompt, system=None):
+    async def generate_json(prompt, system=None, model=None):
         calls["json"].append(prompt)
         return calls.get("intent", {"intent": "general_knowledge", "entity": None, "ticker": None})
 

@@ -8,6 +8,7 @@ import json
 import re
 from typing import AsyncIterator
 
+from ..config import GEMINI_FAST_MODEL
 from ..constants import MSG_CLARIFICATION, MSG_NEED_STOCK_NAME, MSG_NO_PRICE_DATA, MSG_NO_PREDICTION_DATA
 from ..prompts import gemini as prompts
 from ..utils import gemini
@@ -53,7 +54,8 @@ async def handle_message(message: str, history: list[dict], context: dict):
             return "stream", _single("Please pick one of the suggested tickers.")
         return "stream", _stock_answer(intent, ticker, ticker, message)
 
-    intent_data = await gemini.generate_json(prompts.intent_classification(history_text, message))
+    intent_data = await gemini.generate_json(prompts.intent_classification(history_text, message),
+                                             model=GEMINI_FAST_MODEL)
     intent = intent_data.get("intent") or "general_knowledge"
     entity = intent_data.get("entity")
 

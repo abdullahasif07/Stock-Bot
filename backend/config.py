@@ -35,6 +35,11 @@ ALPHA_VANTAGE_API_KEY = os.environ.get("ALPHA_VANTAGE_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 # Tried in order when the primary model is overloaded (503/429) or retired (404).
 GEMINI_FALLBACK_MODELS = _list("GEMINI_FALLBACK_MODELS", "gemini-3.5-flash,gemini-3.1-flash-lite")
+# Small, fast model for the quick intent-classification call before each answer.
+GEMINI_FAST_MODEL = os.environ.get("GEMINI_FAST_MODEL", "gemini-3.1-flash-lite")
+# Gemini 3 models "think" before answering by default, which adds seconds of
+# latency. minimal|low|medium|high; empty = model default.
+GEMINI_THINKING_LEVEL = os.environ.get("GEMINI_THINKING_LEVEL", "minimal").strip().upper()
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 
 # ── External services ───────────────────────────────────────────────────────
