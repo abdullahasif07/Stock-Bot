@@ -1,35 +1,27 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import LoginPage from './pages/LoginPage';
-import SignupPage from './pages/SignupPage';
+import React, { useEffect, useState } from 'react';
 import ChatPage from './pages/ChatPage';
-import { hasAuthTokens } from './utils/apiClient';
-
-function ProtectedRoute({ children }) {
-  if (!hasAuthTokens()) {
-    return <Navigate to="/login" />;
-  }
-  return children;
-}
+import AccessGate from './components/AccessGate';
+import { useDemoStatus } from './hooks/useDemoStatus';
+import { getAccessCode } from './utils/apiClient';
 
 function App() {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <ChatPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </Router>
-  );
+  const { status, refresh } = useDemoStatus();
+  const [needsCode, setNeedsCode] = useState(false);
+
+  useEffect(() => {
+    if (status?.access_code_required && !getAccessCode()) setNeedsCode(true);
+  }, [status]);
+
+  useEffect(() => {
+    const onRequired = () => setNeedsCode(true);
+    window.addEventListener('stockbot:access-required', onRequired);
+    return () => window.removeEventListener('stockbot:access-required', onRequired);
+  }, []);
+
+  if (needsCode) {
+    return <AccessGate onUnlocked={() => { setNeedsCode(false); refresh(); }} />;
+  }
+  return <ChatPage status={status} onActivity={refresh} />;
 }
 
 export default App;

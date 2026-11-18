@@ -1,32 +1,26 @@
 import React from 'react';
 import { Newspaper } from 'lucide-react';
+import { safeUrl } from '../../utils/format';
 import '../../styles/NewsPanel.css';
 
-function NewsPanel({ news }) {
-  const hasNews = news && news.length > 0;
-  const articlesToDisplay = hasNews ? news.slice(0, 10) : [];
-
+function NewsPanel({ news, loading }) {
+  const articles = (news ?? []).slice(0, 10);
   return (
     <div id="news-panel">
       <h2 className="panel-header"><Newspaper size={20} /> Latest News</h2>
       <div className="news-list">
-        {hasNews ? (
-          articlesToDisplay.map((article, index) => (
-            <a 
-              href={article.url} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="news-item" 
-              key={index}
-              style={{ animationDelay: `${index * 0.1}s` }}
-            >
-              <div className="news-item-title">{article.title}</div>
-              <div className="news-item-summary">{article.summary || article.source || ''}</div>
-            </a>
-          ))
-        ) : (
-          <p style={{ padding: '0.5rem', color: '#666', fontSize: '0.9rem' }}>No news available</p>
-        )}
+        {articles.length ? articles.map((a, i) => (
+          <a href={safeUrl(a.url)} target="_blank" rel="noopener noreferrer" className="news-item"
+             key={a.url || i} style={{ animationDelay: `${i * 0.08}s` }}>
+            <div className="news-item-title">{a.title}</div>
+            <div className="news-item-summary">
+              {a.sentiment && (
+                <span className={`sentiment ${a.sentiment.toLowerCase().replace(/[^a-z]+/g, '-')}`}>{a.sentiment}</span>
+              )}
+              {a.source}
+            </div>
+          </a>
+        )) : <p className="panel-empty">{loading ? 'Loading…' : 'No news available right now'}</p>}
       </div>
     </div>
   );

@@ -1,54 +1,41 @@
-
-
 import React from 'react';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, TrendingDown } from 'lucide-react';
+import { toNumber } from '../../utils/format';
 import '../../styles/MarketMovers.css';
 
-function MarketMovers({ movers }) {
-  
-  const createMoverItem = (stock, type) => {
-    const changePercent = parseFloat(stock.change_percentage.replace('%', '')).toFixed(2);
-    const isPositive = type === 'gainer';
-
-    return (
-      <div className={`mover-item ${type}`} key={stock.ticker}>
-        <div className="mover-item-header">
-          <span className="symbol">{stock.ticker}</span>
-          <span className="price">${parseFloat(stock.price).toFixed(2)}</span>
-        </div>
-        <div className="mover-item-details">
-          <span className={`change ${isPositive ? 'positive' : 'negative'}`}>
-            {isPositive ? '+' : ''}{stock.change_amount}
-          </span>
-          <span className={`change ${isPositive ? 'positive' : 'negative'}`}>
-            {isPositive ? '+' : ''}{changePercent}%
-          </span>
-        </div>
+function MoverItem({ stock, type }) {
+  const positive = type === 'gainer';
+  const sign = positive ? '+' : '';
+  return (
+    <div className={`mover-item ${type}`}>
+      <div className="mover-item-header">
+        <span className="symbol">{stock.ticker}</span>
+        <span className="price">${toNumber(stock.price).toFixed(2)}</span>
       </div>
-    );
-  };
+      <div className="mover-item-details">
+        <span className={`change ${positive ? 'positive' : 'negative'}`}>{sign}{toNumber(stock.change_amount).toFixed(2)}</span>
+        <span className={`change ${positive ? 'positive' : 'negative'}`}>{sign}{toNumber(stock.change_percentage).toFixed(2)}%</span>
+      </div>
+    </div>
+  );
+}
 
-  // Safety check for empty data
-  const hasGainers = movers?.top_gainers && movers.top_gainers.length > 0;
-  const hasLosers = movers?.top_losers && movers.top_losers.length > 0;
+function MarketMovers({ movers, loading }) {
+  const gainers = movers?.top_gainers ?? [];
+  const losers = movers?.top_losers ?? [];
+  const empty = (label) => <p className="panel-empty">{loading ? 'Loading…' : `No ${label} data right now`}</p>;
 
   return (
     <div>
-      <h2 className="panel-header"><TrendingUp size={20} /> Market Movers</h2>
+      <h2 className="panel-header"><TrendingUp size={20} /> Top Gainers</h2>
       <div className="movers-list">
-        {hasGainers ? (
-          movers.top_gainers.map(stock => createMoverItem(stock, 'gainer'))
-        ) : (
-          <p style={{ padding: '0.5rem', color: '#666', fontSize: '0.9rem' }}>No gainers data</p>
-        )}
+        {gainers.length ? gainers.map(s => <MoverItem key={s.ticker} stock={s} type="gainer" />) : empty('gainers')}
       </div>
-      <div className="movers-list" style={{ marginTop: '1rem' }}>
-        {hasLosers ? (
-          movers.top_losers.map(stock => createMoverItem(stock, 'loser'))
-        ) : (
-          <p style={{ padding: '0.5rem', color: '#666', fontSize: '0.9rem' }}>No losers data</p>
-        )}
+      <h2 className="panel-header" style={{ marginTop: '1.25rem' }}><TrendingDown size={20} /> Top Losers</h2>
+      <div className="movers-list">
+        {losers.length ? losers.map(s => <MoverItem key={s.ticker} stock={s} type="loser" />) : empty('losers')}
       </div>
+      {movers?.last_updated && <p className="panel-footnote">Updated {movers.last_updated}</p>}
     </div>
   );
 }

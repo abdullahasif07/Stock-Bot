@@ -1,69 +1,52 @@
 import API_BASE_URL from '../config';
 
-function getToken() {
-  return localStorage.getItem('stockbot_token');
+const ACCESS_KEY = 'stockbot_access_code';
+
+export function getAccessCode() {
+  try { return localStorage.getItem(ACCESS_KEY) || ''; } catch { return ''; }
 }
 
-function getRefreshToken() {
-  return localStorage.getItem('stockbot_refresh_token');
+export function setAccessCode(code) {
+  try { localStorage.setItem(ACCESS_KEY, code); } catch { /* storage unavailable */ }
 }
 
-export function setTokens(accessToken, refreshToken) {
-  localStorage.setItem('stockbot_token', accessToken);
-  if (refreshToken) {
-    localStorage.setItem('stockbot_refresh_token', refreshToken);
+export class ApiError extends Error {
+  constructor(status, code, message) {
+    super(message);
+    this.status = status;
+    this.code = code;
   }
 }
 
-export function clearTokens() {
-  localStorage.removeItem('stockbot_token');
-  localStorage.removeItem('stockbot_refresh_token');
-}
-
-export function hasAuthTokens() {
-  return !!(getToken() || getRefreshToken());
-}
-
-async function refreshAccessToken() {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-
+async function toApiError(response) {
+  let code = 'error';
+  let message = `Request failed (${response.status}).`;
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      setTokens(data.access_token, data.refresh_token);
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
+    const body = await response.json();
+    const detail = body?.detail;
+    if (typeof detail === 'string') message = detail;
+    else if (Array.isArray(detail)) message = detail[0]?.msg || message;
+    else if (detail) { code = detail.code || code; message = detail.message || message; }
+  } catch { /* non-JSON error */ }
+  if (code === 'access_code_required') window.dispatchEvent(new Event('stockbot:access-required'));
+  return new ApiError(response.status, code, message);
 }
 
-export async function authFetch(url, options = {}) {
-  const token = getToken();
+/** fetch() against the API. Throws ApiError for non-2xx responses. */
+export async function apiFetch(path, options = {}) {
   const headers = { ...options.headers };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  let response = await fetch(`${API_BASE_URL}${url}`, { ...options, headers });
-
-  if (response.status === 401) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed) {
-      headers['Authorization'] = `Bearer ${getToken()}`;
-      response = await fetch(`${API_BASE_URL}${url}`, { ...options, headers });
-    }
-    if (response.status === 401) {
-      clearTokens();
-      window.location.href = '/login';
-    }
+  const code = getAccessCode();
+  if (code) headers['X-Access-Code'] = code;
+  if (options.json !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    options = { ...options, body: JSON.stringify(options.json) };
   }
-
+  const response = await fetch(`${API_BASE_URL}/api${path}`, { ...options, headers });
+  if (!response.ok) throw await toApiError(response);
   return response;
+}
+
+export async function apiJson(path, options) {
+  const response = await apiFetch(path, options);
+  return response.json();
 }

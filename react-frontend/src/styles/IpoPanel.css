@@ -4,3 +4,5 @@
 .ipo-item .symbol { font-size: 1.1rem; color: var(--primary-color); }
 .ipo-item .date { font-size: 0.8rem; color: #b0b0b0; font-weight: normal; }
 .ipo-item .name { font-size: 0.9rem; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.ipo-meta { font-size: 0.75rem; color: #888; margin-top: 0.2rem; }

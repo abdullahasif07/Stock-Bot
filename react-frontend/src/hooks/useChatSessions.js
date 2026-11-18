@@ -1,75 +1,64 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { authFetch } from '../utils/apiClient';
+import { useCallback, useEffect, useState } from 'react';
 
-export function useChatSessions(user) {
-  const [chatSessions, setChatSessions] = useState([]);
-  const [activeChatId, setActiveChatId] = useState(null);
-  const sessionsRef = useRef([]);
+// Conversations live in the visitor's browser (no accounts needed). Each
+// visitor only ever sees their own chats; nothing is stored server-side.
+const STORAGE_KEY = 'stockbot_sessions_v2';
+const MAX_SESSIONS = 30;
 
-  useEffect(() => {
-    sessionsRef.current = chatSessions;
-  }, [chatSessions]);
-
-  const fetchSessions = useCallback(async () => {
-    try {
-      const response = await authFetch('/chats');
-      if (response.ok) {
-        const data = await response.json();
-        setChatSessions(data);
-        return data;
-      }
-    } catch (error) {
-      console.error('Error fetching chat sessions:', error);
-    }
+function load() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
     return [];
-  }, []);
+  }
+}
+
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
+export function useChatSessions() {
+  const [sessions, setSessions] = useState(load);
+  const [activeId, setActiveId] = useState(() => load()[0]?.id ?? null);
 
   useEffect(() => {
-    if (!user) return;
-    fetchSessions().then(data => {
-      setActiveChatId(prev => {
-        if (prev) return prev;
-        return data.length > 0 ? data[0].id : null;
-      });
-    });
-  }, [user, fetchSessions]);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_SESSIONS))); }
+    catch { /* quota exceeded / private mode: keep in memory */ }
+  }, [sessions]);
 
-  const createChat = useCallback(async (message) => {
-    const response = await authFetch('/chats', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
-    });
-    if (!response.ok) throw new Error('Failed to create chat');
-    const data = await response.json();
+  const activeSession = sessions.find(s => s.id === activeId) || null;
 
-    await fetchSessions();
-    return { chatId: data.chat_id };
-  }, [fetchSessions]);
-
-  const deleteChat = useCallback(async (chatIdToDelete) => {
-    const response = await authFetch(`/chats/${chatIdToDelete}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) throw new Error('Failed to delete chat');
-
-    const current = sessionsRef.current;
-    const deletedIndex = current.findIndex(s => s.id === chatIdToDelete);
-    const updated = current.filter(s => s.id !== chatIdToDelete);
-    setChatSessions(updated);
-
-    if (updated.length > 0) {
-      return updated[Math.min(deletedIndex, updated.length - 1)].id;
-    }
-    return null;
+  const createSession = useCallback((title) => {
+    const session = { id: newId(), title: title.slice(0, 40) || 'New chat', createdAt: Date.now(), messages: [], rag: null };
+    setSessions(prev => [session, ...prev]);
+    setActiveId(session.id);
+    return session.id;
   }, []);
+
+  const updateSession = useCallback((id, updater) => {
+    setSessions(prev => prev.map(s => (s.id === id ? { ...s, ...updater(s) } : s)));
+  }, []);
+
+  const addMessage = useCallback((id, message) => {
+    const msg = { id: newId(), ...message };
+    updateSession(id, s => ({ messages: [...s.messages, msg] }));
+    return msg.id;
+  }, [updateSession]);
+
+  const patchMessage = useCallback((sessionId, messageId, patch) => {
+    updateSession(sessionId, s => ({
+      messages: s.messages.map(m => (m.id === messageId ? { ...m, ...patch } : m)),
+    }));
+  }, [updateSession]);
+
+  const deleteSession = useCallback((id) => {
+    const idx = sessions.findIndex(s => s.id === id);
+    const remaining = sessions.filter(s => s.id !== id);
+    setSessions(prev => prev.filter(s => s.id !== id));
+    if (activeId === id) setActiveId(remaining[Math.min(idx, remaining.length - 1)]?.id ?? null);
+  }, [sessions, activeId]);
 
   return {
-    chatSessions,
-    activeChatId,
-    setActiveChatId,
-    fetchSessions,
-    createChat,
-    deleteChat,
+    sessions, activeId, activeSession, setActiveId,
+    createSession, updateSession, addMessage, patchMessage, deleteSession,
   };
 }

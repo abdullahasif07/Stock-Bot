@@ -33,7 +33,7 @@
 .rag-action-btn {
     padding: 0 1.25rem;
     height: 48px;
-    min-width: 140px;
+    white-space: nowrap;
     border: 1px solid var(--primary-color);
     background-color: transparent;
     color: white;
@@ -60,3 +60,24 @@
     background-color: #bd160a;
     color: white;
 }
+
+.rag-action-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; font-family: var(--font-family); }
+.chat-input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+.chat-input-area input { min-width: 0; }
+@media (max-width: 1400px) {
+    .chat-input-area { padding: 0.75rem 1rem; }
+    .rag-action-btn { padding: 0 0.8rem; }
+}
+@media (max-width: 520px) {
+    .chat-input-area form { gap: 0.5rem; }
+    .rag-action-btn { font-size: 0; gap: 0; padding: 0 0.9rem; }   /* icon only */
+    .rag-action-btn svg { width: 18px; height: 18px; }
+}
+.chat-input-area .icon-btn.secondary { background-color: #3a3a3a; color: var(--text-color); }
+.chat-input-area .icon-btn.secondary:hover:not(:disabled) { background-color: #4a4a4a; }
+
+/* The generic 48px square button rule above must not squash the text button. */
+.chat-input-area .rag-action-btn { width: auto; background-color: transparent; color: white; border: 1px solid var(--primary-color); }
+.chat-input-area .rag-action-btn:hover:not(:disabled) { background-color: var(--primary-color); }
+.chat-input-area .rag-action-btn.exit { background-color: rgb(211, 69, 69); }
+.chat-input-area .rag-action-btn.exit:hover { background-color: #bd160a; }

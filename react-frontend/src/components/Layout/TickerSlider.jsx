@@ -1,42 +1,30 @@
-
-
 import React from 'react';
+import { toNumber } from '../../utils/format';
 import '../../styles/TickerSlider.css';
 
-function TickerSlider({ tickerData }) {
-  
-  
-  const getChangeClass = (change) => {
-    const changeValue = parseFloat(change);
-    return changeValue >= 0 ? 'positive' : 'negative';
-  };
-
+function TickerItem({ stock }) {
+  const change = toNumber(stock.change);
+  const pct = toNumber(stock.change_percent);
+  const sign = change >= 0 ? '+' : '';
   return (
-    <div className="ticker-slider-container">
+    <div className="ticker-item">
+      <span className="symbol">{stock.symbol}</span>
+      <span className="price">${toNumber(stock.price).toFixed(2)}</span>
+      <span className={`change ${change >= 0 ? 'positive' : 'negative'}`}>
+        {sign}{change.toFixed(2)} ({sign}{pct.toFixed(2)}%)
+      </span>
+    </div>
+  );
+}
+
+function TickerSlider({ tickerData }) {
+  const items = tickerData ?? [];
+  // Rendered twice so the CSS marquee loops seamlessly.
+  const doubled = items.concat(items);
+  return (
+    <div className="ticker-slider-container" aria-label="Most actively traded stocks">
       <div className="ticker-track">
-        {}
-        {tickerData.map((stock, index) => (
-          <div className="ticker-item" key={index}>
-            <span className="symbol">{stock.symbol}</span>
-            <span className="price">${parseFloat(stock.price).toFixed(2)}</span>
-            <span className={`change ${getChangeClass(stock.change)}`}>
-              {}
-              {parseFloat(stock.change) >= 0 ? '+' : ''}
-              {parseFloat(stock.change).toFixed(2)} ({stock.change_percent})
-            </span>
-          </div>
-        ))}
-        {}
-        {tickerData.map((stock, index) => (
-            <div className="ticker-item" key={`duplicate-${index}`}>
-                <span className="symbol">{stock.symbol}</span>
-                <span className="price">${parseFloat(stock.price).toFixed(2)}</span>
-                <span className={`change ${getChangeClass(stock.change)}`}>
-                {parseFloat(stock.change) >= 0 ? '+' : ''}
-                {parseFloat(stock.change).toFixed(2)} ({stock.change_percent})
-                </span>
-            </div>
-        ))}
+        {doubled.map((stock, i) => <TickerItem key={`${stock.symbol}-${i}`} stock={stock} />)}
       </div>
     </div>
   );

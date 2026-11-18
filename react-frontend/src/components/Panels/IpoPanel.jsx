@@ -2,36 +2,26 @@ import React from 'react';
 import { Rocket } from 'lucide-react';
 import '../../styles/IpoPanel.css';
 
-function IpoPanel({ ipos }) {
-  // Add safety check for empty or undefined data
-  if (!ipos || ipos.length === 0) {
-    return (
-      <div id="ipo-panel">
-        <h2 className="panel-header"><Rocket size={20} /> Upcoming IPOs</h2>
-        <div className="ipo-list">
-          <p style={{ padding: '1rem', color: '#666', fontSize: '0.9rem' }}>No IPO data available</p>
-        </div>
-      </div>
-    );
-  }
-
+function IpoPanel({ ipos, loading }) {
+  const list = ipos ?? [];
   return (
     <div id="ipo-panel">
       <h2 className="panel-header"><Rocket size={20} /> Upcoming IPOs</h2>
       <div className="ipo-list">
-        {ipos.map((ipo, index) => (
-          <div 
-            className="ipo-item" 
-            key={ipo.symbol || index}
-            style={{ animationDelay: `${index * 0.1}s` }}
-          >
+        {list.length ? list.map((ipo, i) => (
+          <div className="ipo-item" key={`${ipo.symbol}-${i}`} style={{ animationDelay: `${i * 0.08}s` }}>
             <div className="ipo-item-header">
               <span className="symbol">{ipo.symbol || 'N/A'}</span>
               <span className="date">{ipo.ipoDate || 'TBD'}</span>
             </div>
-            <div className="name">{ipo.name || 'Unknown Company'}</div>
+            <div className="name">{ipo.name || 'Unknown company'}</div>
+            {(ipo.priceRange || ipo.exchange) && (
+              <div className="ipo-meta">
+                {[ipo.priceRange && `$${ipo.priceRange}`, ipo.exchange].filter(Boolean).join(' · ')}
+              </div>
+            )}
           </div>
-        ))}
+        )) : <p className="panel-empty">{loading ? 'Loading…' : 'No IPO data available right now'}</p>}
       </div>
     </div>
   );

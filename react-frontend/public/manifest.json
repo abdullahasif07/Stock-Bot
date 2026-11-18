@@ -1,6 +1,6 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "StockBot",
+  "name": "StockBot — AI Financial Assistant",
   "icons": [
     {
       "src": "favicon.ico",

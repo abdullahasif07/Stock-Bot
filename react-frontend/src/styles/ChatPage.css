@@ -1,50 +1,71 @@
-.main-content-wrapper {
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    gap: 2rem;
-    width: 100%;
-    max-width: 1920px;
-    height: 100%;
-    padding: 70px 2rem 2rem 2rem;
-}
+/* Page layout.
+   Wide screens:   [movers] [chats | chat] [news / ipos]   — fits the viewport, no page scroll
+   Medium screens: chat on top, the three panels in a row below (page scrolls)
+   Phones:         everything stacked in one column */
 
-.main-content-wrapper > .side-panel:first-child {
-    width: 300px;
-    height: 90vh;
-    max-height: 850px;
-    flex-shrink: 0;
-}
-
-.right-column {
+#root {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
-    height: 90vh;
-    max-height: 850px;
-    width: 300px;
-    flex-shrink: 0;
+    height: 100vh;
+    height: 100dvh;
 }
 
-.right-column .side-panel {
-    height: calc(50% - 1rem);
+.main-content-wrapper {
+    flex: 1;
+    min-height: 0;
     width: 100%;
+    max-width: 1920px;
+    margin: 0 auto;
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: minmax(220px, 270px) minmax(0, 1fr) minmax(240px, 310px);
+    grid-template-areas: "movers chat side";
+    gap: 1rem;
 }
 
-@media (max-width: 1600px) {
-    .chat-container { width: 500px; }
-    .main-content-wrapper > .side-panel:first-child, .right-column { width: 280px; }
+.area-movers { grid-area: movers; }
+.full-page-chat-wrapper { grid-area: chat; }
+
+.right-column {
+    grid-area: side;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    min-height: 0;
+}
+
+.main-content-wrapper .side-panel {
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
 }
 
 @media (max-width: 1400px) {
-    .chat-container { width: 450px; }
-    .main-content-wrapper > .side-panel:first-child, .right-column { width: 250px; }
+    .main-content-wrapper { grid-template-columns: 220px minmax(0, 1fr) 250px; }
 }
 
-@media (max-width: 1200px) {
-    .main-content-wrapper { flex-wrap: wrap; align-content: flex-start; padding-top: 90px; }
-    .main-content-wrapper > .side-panel:first-child { order: 1; width: 100%; height: auto; max-height: 300px; }
-    .chat-container { order: 2; width: 100%; height: 60vh; }
-    .right-column { order: 3; flex-direction: row; width: 100%; height: auto; }
-    .right-column .side-panel { width: 50%; height: 300px; }
+@media (max-width: 1150px) {
+    body { overflow-y: auto; }
+    #root { height: auto; min-height: 100vh; }
+    .main-content-wrapper {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-areas:
+            "chat   chat chat"
+            "movers news ipos";
+    }
+    .full-page-chat-wrapper { height: 82vh; min-height: 520px; }
+    .right-column { display: contents; }
+    .area-news { grid-area: news; }
+    .area-ipos { grid-area: ipos; }
+    .main-content-wrapper .side-panel { height: 380px; }
+}
+
+@media (max-width: 760px) {
+    .main-content-wrapper {
+        padding: 0.75rem;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "chat" "movers" "news" "ipos";
+    }
+    .full-page-chat-wrapper { height: auto; min-height: 0; }
+    .main-content-wrapper .side-panel { height: auto; max-height: 420px; }
 }

@@ -1,20 +1,15 @@
-export async function readStreamResponse(response, messageId, setHistory) {
+/** Read a streamed text response, calling onText with the accumulated text. */
+export async function readStream(response, onText) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  let accumulatedText = '';
-
-  setHistory(prev => [...prev, { role: 'model', text: '', id: messageId }]);
-
+  let text = '';
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    accumulatedText += decoder.decode(value, { stream: true });
-    setHistory(prev =>
-      prev.map(msg =>
-        msg.id === messageId ? { ...msg, text: accumulatedText } : msg
-      )
-    );
+    text += decoder.decode(value, { stream: true });
+    onText(text);
   }
-
-  return accumulatedText;
+  text += decoder.decode();
+  onText(text);
+  return text;
 }
