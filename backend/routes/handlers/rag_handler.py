@@ -1,53 +1,52 @@
-import os
 import asyncio
 
-from ...config import DATA_DIR
-from ...services import rag_service, stock_service
+from fastapi import HTTPException, UploadFile
+
+from ...config import MAX_UPLOAD_MB
+from ...models.schemas import RagInitiateRequest, RagQueryRequest
+from ...services import rag_service, sec_service
+from ..streaming import primed_stream
 
 
 class RagHandler:
 
     @staticmethod
-    async def initiate(company_name: str, context: dict) -> dict:
-        """Load or fetch the 10-K filing and build the vector store.
-
-        Returns a result dict with 'message' and 'company_name'.
-        Raises RuntimeError if the document cannot be obtained.
-        """
-        # Currently hardcoded — to be made dynamic later
-        ticker = "AMZN"
-        actual_name = "Amazon"
-
-        if not os.path.exists(DATA_DIR):
-            os.makedirs(DATA_DIR)
-
-        file_name = f"{actual_name.replace(' ', '_')}_10k.txt"
-        file_path = os.path.join(DATA_DIR, file_name)
-
-        document_text = None
-        if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as f:
-                document_text = f.read()
-        else:
-            document_text = await asyncio.to_thread(
-                stock_service.get_10k_filing_text, ticker
-            )
-            if document_text:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(document_text)
-
-        if not document_text:
-            raise RuntimeError(
-                f"Sorry, I was unable to retrieve the 10-K report for {actual_name}."
-            )
-
-        await rag_service.create_vector_store_from_text(document_text, actual_name)
-        return {
-            "message": f"The latest 10-K report for {actual_name} is ready. What would you like to know?",
-            "company_name": actual_name,
-        }
+    async def initiate(payload: RagInitiateRequest) -> dict:
+        """Resolve a company name/ticker and prepare its latest annual report.
+        Returns either a clarification (several matches) or the document metadata."""
+        confident, candidates = await asyncio.to_thread(sec_service.resolve_company, payload.company)
+        if not confident:
+            if not candidates:
+                raise HTTPException(404, detail={"code": "not_found", "message":
+                    f"No SEC-registered company matches \"{payload.company}\". Try the ticker symbol."})
+            return {
+                "response_type": "clarification",
+                "message": f"I found several companies matching \"{payload.company}\". Which one?",
+                "choices": [{"symbol": c["ticker"], "name": c["name"]} for c in candidates],
+            }
+        try:
+            doc = await asyncio.to_thread(rag_service.build_filing_index, confident["ticker"])
+        except rag_service.DocumentError as e:
+            raise HTTPException(422, detail={"code": "document_error", "message": str(e)})
+        return {"response_type": "document", "document": doc}
 
     @staticmethod
-    def query(company_name: str, question: str):
-        """Returns an async generator that streams the RAG answer."""
-        return rag_service.query_rag_pipeline(company_name, question)
+    async def upload(file: UploadFile) -> dict:
+        limit = MAX_UPLOAD_MB * 1024 * 1024
+        data = await file.read(limit + 1)
+        if len(data) > limit:
+            raise HTTPException(413, detail={"code": "too_large", "message": f"Max upload size is {MAX_UPLOAD_MB} MB."})
+        try:
+            doc = await asyncio.to_thread(rag_service.build_upload_index, file.filename or "document.txt", data)
+        except rag_service.DocumentError as e:
+            raise HTTPException(422, detail={"code": "document_error", "message": str(e)})
+        except Exception as e:
+            print(f"[RAG] Upload parse failed: {type(e).__name__}: {e}")
+            raise HTTPException(422, detail={"code": "document_error", "message": "Couldn't read that file."})
+        return {"response_type": "document", "document": doc}
+
+    @staticmethod
+    async def query(payload: RagQueryRequest):
+        return await primed_stream(rag_service.answer(
+            payload.doc_id, payload.question, [m.model_dump() for m in payload.history]
+        ))

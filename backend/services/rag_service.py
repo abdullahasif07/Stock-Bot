@@ -1,92 +1,181 @@
+"""RAG orchestration: build/load document indexes and answer questions.
+
+Efficiency vs. the previous LangChain/FAISS pipeline:
+* Embedding model is loaded once per process (was re-created per document).
+* Indexes are persisted to disk per filing accession, so a 10-K is embedded
+  once ever, not once per server start / per user.
+* Hybrid BM25 + dense retrieval with section-aware chunks and citations.
+* One Gemini call per question (the separate "is this relevant?" LLM call was
+  removed; the answer prompt handles small talk itself) — halves LLM usage.
+"""
 import asyncio
+import io
+import re
+import secrets
+import threading
+import time
+from collections import OrderedDict
+from typing import AsyncIterator
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
-from google.api_core.exceptions import ServiceUnavailable, ResourceExhausted
-
-from ..config import GEMINI_API_KEY, GEMINI_FLASH_MODEL, EMBEDDING_MODEL
-from ..utils.gemini import get_model
+from ..config import INDEX_DIR
 from ..prompts import rag as prompts
-from ..constants import MSG_RAG_NOT_PROCESSED
+from ..rag.chunking import chunk_document
+from ..rag.index import DocumentIndex
+from ..utils import gemini
+from ..utils.quota import filing_budget, QuotaExceeded
+from . import sec_service
 
-MAX_RETRIES = 3
-RETRY_DELAYS = [2, 5, 10]
+MAX_LOADED = 8
+UPLOAD_TTL = 3 * 3600
+MAX_DOC_CHARS = 2_000_000
 
-vector_store_cache = {}
-
-
-async def create_vector_store_from_text(document_text, company_name):
-    """Chunks text, embeds it, and stores in an in-memory FAISS index."""
-    print(f"[RAG] Creating vector store for {company_name}...")
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=2500, chunk_overlap=100)
-    chunks = text_splitter.split_text(document_text)
-
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-
-    vector_store = await FAISS.afrom_texts(chunks, embedding=embeddings)
-    vector_store_cache[company_name] = vector_store
-    print(f"[RAG] Vector store for {company_name} created and cached.")
-    return vector_store
+_loaded: "OrderedDict[str, tuple[float, DocumentIndex]]" = OrderedDict()
+_loaded_lock = threading.Lock()
+_build_locks: dict[str, threading.Lock] = {}
 
 
-def is_question_relevant(question):
-    """Quick LLM gate — is this a real question or conversational filler?"""
-    model = get_model(GEMINI_FLASH_MODEL)
+class DocumentError(Exception):
+    pass
+
+
+def _remember(index: DocumentIndex) -> None:
+    with _loaded_lock:
+        _loaded[index.doc_id] = (time.time(), index)
+        _loaded.move_to_end(index.doc_id)
+        while len(_loaded) > MAX_LOADED:
+            _loaded.popitem(last=False)
+
+
+def get_index(doc_id: str) -> DocumentIndex | None:
+    with _loaded_lock:
+        entry = _loaded.get(doc_id)
+        if entry:
+            if doc_id.startswith("upload_") and time.time() - entry[0] > UPLOAD_TTL:
+                del _loaded[doc_id]
+                return None
+            _loaded.move_to_end(doc_id)
+            return entry[1]
+    if doc_id.startswith("upload_") or not re.fullmatch(r"[A-Z0-9\-]+_[\w\-]+", doc_id):
+        return None
+    index = DocumentIndex.load(INDEX_DIR, doc_id)
+    if index:
+        _remember(index)
+    return index
+
+
+def _public_meta(index: DocumentIndex) -> dict:
+    m = index.meta
+    return {
+        "doc_id": index.doc_id,
+        "title": m.get("title"),
+        "company_name": m.get("company_name"),
+        "ticker": m.get("ticker"),
+        "form": m.get("form"),
+        "report_date": m.get("report_date"),
+        "filing_date": m.get("filing_date"),
+        "source_url": m.get("source_url"),
+        "chunks": len(index.chunks),
+    }
+
+
+def build_filing_index(ticker: str) -> dict:
+    """Blocking. Returns public metadata for the ticker's latest annual report."""
+    company = sec_service.lookup_ticker(ticker)
+    if not company:
+        raise DocumentError(f"'{ticker}' is not a ticker registered with the SEC.")
+    filing = None
     try:
-        response = model.generate_content(prompts.relevance_check(question))
-        return response.text.strip().upper() == "YES"
+        filing = sec_service.latest_annual_filing(company["cik"])
     except Exception as e:
-        print(f"[RAG] Relevance check failed: {e}")
-        return True
+        print(f"[RAG] Filing lookup failed for {ticker}: {e}")
+    doc_id = f"{company['ticker']}_{filing['accession'] if filing else 'bundled'}"
+
+    existing = get_index(doc_id)
+    if existing:
+        return _public_meta(existing)
+
+    lock = _build_locks.setdefault(doc_id, threading.Lock())
+    with lock:
+        existing = get_index(doc_id)
+        if existing:
+            return _public_meta(existing)
+        if not filing_budget.try_consume():
+            raise QuotaExceeded("document processing")
+        report = sec_service.get_annual_report(company["ticker"])
+        if not report:
+            raise DocumentError(f"Couldn't retrieve an annual report (10-K/20-F) for {company['name']}.")
+        meta = {**report["meta"], "title": f"{company['name']} {report['meta'].get('form', '10-K')}"}
+        doc_id = f"{company['ticker']}_{meta.get('accession', 'bundled')}"
+        t0 = time.time()
+        chunks = chunk_document(report["text"][:MAX_DOC_CHARS])
+        index = DocumentIndex.build(doc_id, meta, chunks)
+        index.save(INDEX_DIR)
+        _remember(index)
+        print(f"[RAG] Indexed {doc_id}: {len(chunks)} chunks in {time.time() - t0:.1f}s")
+        return _public_meta(index)
 
 
-def _build_rag_chain(vector_store, company_name):
-    retriever = vector_store.as_retriever(search_kwargs={"k": 6})
-    llm = ChatGoogleGenerativeAI(model=GEMINI_FLASH_MODEL, google_api_key=GEMINI_API_KEY, temperature=0.3)
-    prompt = ChatPromptTemplate.from_template(prompts.RAG_CHAIN_TEMPLATE)
+def extract_upload_text(filename: str, data: bytes) -> str:
+    name = filename.lower()
+    if name.endswith(".pdf"):
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        if len(reader.pages) > 300:
+            raise DocumentError("PDF has too many pages (max 300).")
+        return "\n".join((p.extract_text() or "") for p in reader.pages)
+    if name.endswith((".htm", ".html")):
+        return sec_service.html_to_text(data)
+    if name.endswith((".txt", ".md", ".csv")):
+        return data.decode("utf-8", errors="replace")
+    raise DocumentError("Unsupported file type. Upload a PDF, HTML, TXT, MD or CSV file.")
 
-    return (
-        {
-            "context": retriever,
-            "question": RunnablePassthrough(),
-            "company_name": lambda x: company_name,
-        }
-        | prompt
-        | llm
-        | StrOutputParser()
+
+def build_upload_index(filename: str, data: bytes) -> dict:
+    text = extract_upload_text(filename, data).strip()
+    if len(text) < 200:
+        raise DocumentError("Couldn't extract enough text from that file (is it a scanned PDF?).")
+    chunks = chunk_document(text[:MAX_DOC_CHARS])
+    doc_id = "upload_" + secrets.token_urlsafe(16)  # unguessable → private to the uploader
+    clean_name = re.sub(r"[^\w.\- ]", "", filename)[:80] or "document"
+    index = DocumentIndex.build(doc_id, {"title": clean_name, "company_name": clean_name}, chunks)
+    _remember(index)
+    return _public_meta(index)
+
+
+def _retrieval_query(question: str, history: list[dict]) -> str:
+    """Short follow-ups ("and in 2023?") inherit the previous question's topic
+    — a free alternative to an LLM query-rewrite call."""
+    if len(question.split()) <= 6:
+        prev = next((m["text"] for m in reversed(history) if m.get("role") == "user"), None)
+        if prev:
+            return f"{prev} {question}"
+    return question
+
+
+async def answer(doc_id: str, question: str, history: list[dict]) -> AsyncIterator[str]:
+    index = await asyncio.to_thread(get_index, doc_id)
+    if not index:
+        yield "This document is no longer loaded (uploads expire after a few hours). Please start a new analysis."
+        return
+
+    hits = await asyncio.to_thread(index.search, _retrieval_query(question, history), 6)
+    excerpts = "\n\n".join(
+        f"[{n}] (Section: {chunk.section})\n{chunk.text}" for n, (chunk, _) in enumerate(hits, 1)
+    )
+    prompt = prompts.answer_prompt(
+        doc_title=index.meta.get("title") or "the document",
+        excerpts=excerpts,
+        history=gemini.format_history(history[-4:], max_chars=600),
+        question=question,
     )
 
+    full = ""
+    async for chunk in gemini.stream(prompt, system=prompts.SYSTEM, temperature=0.2):
+        full += chunk
+        yield chunk
 
-async def query_rag_pipeline(company_name, question):
-    """Async generator — queries the cached vector store and streams the answer.
-    Retries on transient Gemini 503/429 errors."""
-    if not is_question_relevant(question):
-        model = get_model(GEMINI_FLASH_MODEL)
-        response = model.generate_content(prompts.small_talk_fallback(question))
-        yield response.text
-        return
+    cited = sorted({int(n) for n in re.findall(r"\[(\d{1,2})\]", full) if 0 < int(n) <= len(hits)})
+    if cited:
+        lines = [f"- **[{n}]** {hits[n - 1][0].section}" for n in cited]
+        yield "\n\n---\n**Sources**\n" + "\n".join(lines)
 
-    if company_name not in vector_store_cache:
-        yield MSG_RAG_NOT_PROCESSED
-        return
-
-    rag_chain = _build_rag_chain(vector_store_cache[company_name], company_name)
-
-    for attempt in range(MAX_RETRIES):
-        try:
-            async for chunk in rag_chain.astream(question):
-                yield chunk
-            return
-        except (ServiceUnavailable, ResourceExhausted) as e:
-            if attempt < MAX_RETRIES - 1:
-                delay = RETRY_DELAYS[attempt]
-                print(f"[RAG] Gemini 503/429, retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})")
-                await asyncio.sleep(delay)
-            else:
-                print(f"[RAG] Gemini still unavailable after {MAX_RETRIES} attempts: {e}")
-                yield "The AI model is currently experiencing high demand. Please try your question again in a moment."

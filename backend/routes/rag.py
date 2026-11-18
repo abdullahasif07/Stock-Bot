@@ -1,23 +1,23 @@
-from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi import APIRouter, Depends, File, UploadFile
 
+from ..config import CHAT_PER_MINUTE, CHAT_PER_DAY, RAG_INGEST_PER_DAY, UPLOAD_PER_DAY
 from ..models.schemas import RagInitiateRequest, RagQueryRequest
-from ..services.auth_service import get_current_user
+from ..security import rate_limit
 from .handlers.rag_handler import RagHandler
 
-router = APIRouter(tags=["RAG"])
+router = APIRouter(prefix="/api/rag", tags=["RAG"])
 
 
-@router.post("/rag/initiate")
-async def rag_initiate(payload: RagInitiateRequest, user: dict = Depends(get_current_user)):
-    try:
-        result = await RagHandler.initiate(payload.company_name, payload.context)
-        return result
-    except RuntimeError as e:
-        return JSONResponse(status_code=500, content={"message": str(e)})
+@router.post("/initiate", dependencies=[Depends(rate_limit("document", per_minute=3, per_day=RAG_INGEST_PER_DAY))])
+async def rag_initiate(payload: RagInitiateRequest):
+    return await RagHandler.initiate(payload)
 
 
-@router.post("/rag/query")
-async def rag_query(payload: RagQueryRequest, user: dict = Depends(get_current_user)):
-    generator = RagHandler.query(payload.company_name, payload.question)
-    return StreamingResponse(generator, media_type="text/plain")
+@router.post("/upload", dependencies=[Depends(rate_limit("upload", per_minute=2, per_day=UPLOAD_PER_DAY))])
+async def rag_upload(file: UploadFile = File(...)):
+    return await RagHandler.upload(file)
+
+
+@router.post("/query", dependencies=[Depends(rate_limit("chat", CHAT_PER_MINUTE, CHAT_PER_DAY))])
+async def rag_query(payload: RagQueryRequest):
+    return await RagHandler.query(payload)
