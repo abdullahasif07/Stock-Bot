@@ -80,13 +80,6 @@ The app ships as **one Docker image**: FastAPI serves both the API and the built
 ### Your own server: Docker + Caddy (what the live demo uses)
 [`deploy/`](deploy/README.md) has a Compose file and a Caddy site config for running StockBot on a small VPS behind an existing Caddy reverse proxy, with automatic HTTPS and no published ports. GitHub Actions builds the image and pushes it to GHCR (`.github/workflows/docker-publish.yml`), so the server only pulls it. See [deploy/README.md](deploy/README.md) for the step-by-step guide.
 
-### Render (free, easiest)
-1. Push this repo to GitHub.
-2. In Render, go to **New → Blueprint** and pick the repo. `render.yaml` configures everything.
-3. Fill in `GEMINI_API_KEY`, `ALPHA_VANTAGE_API_KEY` and `SEC_USER_AGENT` (and optionally `DEMO_ACCESS_CODE`).
-
-Free instances sleep after 15 minutes idle, so the first request after that takes about 30–60 seconds.
-
 ### AWS App Runner
 ```bash
 aws ecr create-repository --repository-name stockbot

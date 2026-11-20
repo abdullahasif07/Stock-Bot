@@ -1,5 +1,5 @@
 """Central configuration. Everything is driven by environment variables so the
-same image runs locally, on Render, AWS App Runner, Fly.io, etc."""
+same image runs locally, on a VPS, AWS App Runner, Fly.io, etc."""
 import os
 
 from dotenv import load_dotenv
@@ -68,7 +68,7 @@ MAX_HISTORY_MESSAGES = _int("MAX_HISTORY_MESSAGES", 8)
 MAX_UPLOAD_MB = _int("MAX_UPLOAD_MB", 5)
 
 # Number of proxies in front of the app that append to X-Forwarded-For
-# (1 for Render / App Runner / Fly). Set 0 when exposed directly.
+# (1 behind Caddy / App Runner / Fly). Set 0 when exposed directly.
 TRUSTED_PROXY_HOPS = _int("TRUSTED_PROXY_HOPS", 1)
 
 # ── CORS (only needed when the frontend is hosted on a different origin) ────
