@@ -43,6 +43,7 @@ if CORS_ORIGINS:
         allow_origins=CORS_ORIGINS,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "X-Access-Code"],
+        expose_headers=["X-Ticker"],
     )
 
 

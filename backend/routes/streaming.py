@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from ..constants import MSG_INTERNAL_ERROR
 
 
-async def primed_stream(agen: AsyncIterator[str]) -> StreamingResponse:
+async def primed_stream(agen: AsyncIterator[str], headers: dict | None = None) -> StreamingResponse:
     """Pull the first chunk *before* sending headers, so failures that happen
     up-front (quota exceeded, missing key, upstream down) become proper HTTP
     errors instead of a 200 with an error string in the body."""
@@ -24,4 +24,4 @@ async def primed_stream(agen: AsyncIterator[str]) -> StreamingResponse:
             yield f"\n\n_{MSG_INTERNAL_ERROR}_"
 
     return StreamingResponse(body(), media_type="text/plain; charset=utf-8",
-                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no", **(headers or {})})

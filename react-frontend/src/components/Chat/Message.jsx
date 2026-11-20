@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import PriceChart from './PriceChart';
 import '../../styles/Message.css';
 
 // Model output can echo text from filings or uploaded files, so it is
@@ -12,7 +13,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
-function Message({ role, text, choices, error, onChoice, disabled }) {
+function Message({ role, text, choices, error, onChoice, disabled, ticker }) {
   const isBot = role === 'model';
   const html = useMemo(
     () => (isBot ? DOMPurify.sanitize(marked.parse(text || '')) : null),
@@ -26,6 +27,7 @@ function Message({ role, text, choices, error, onChoice, disabled }) {
       ) : (
         <div className="message-content"><p>{text}</p></div>
       )}
+      {isBot && ticker && !error && <PriceChart ticker={ticker} />}
       {choices?.length > 0 && (
         <div className="clarification-choices">
           {choices.map(choice => (

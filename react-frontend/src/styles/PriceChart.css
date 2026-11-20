@@ -1,0 +1,11 @@
+.price-chart { margin-top: 0.6rem; padding: 0.6rem 0.8rem 0.5rem; background: #232323; border: 1px solid #3a3a3a; border-radius: 10px; width: 100%; max-width: 420px; --chart-color: #4caf50; }
+.price-chart.down { --chart-color: #f44336; }
+.price-chart--loading { height: 112px; animation: chart-pulse 1.2s ease-in-out infinite; }
+.price-chart figcaption { display: flex; align-items: baseline; gap: 0.6rem; font-size: 0.85rem; margin-bottom: 0.3rem; }
+.price-chart-change { color: var(--chart-color); font-weight: 600; }
+.price-chart-range { margin-left: auto; color: #9e9e9e; font-size: 0.78rem; }
+.price-chart svg { display: block; width: 100%; height: 72px; }
+.price-chart-line { fill: none; stroke: var(--chart-color); stroke-width: 1.8; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.price-chart-area { fill: var(--chart-color); opacity: 0.12; }
+.price-chart-axis { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.3rem; font-size: 0.72rem; color: #9e9e9e; }
+@keyframes chart-pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.8; } }

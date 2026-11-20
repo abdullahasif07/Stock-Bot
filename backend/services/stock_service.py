@@ -44,6 +44,12 @@ def get_daily_closes(ticker: str) -> list[tuple[str, float]]:
     return out
 
 
+def get_price_history(ticker: str) -> list[dict]:
+    """Daily closes for the in-chat chart. Shares the TIME_SERIES_DAILY cache
+    entry with predictions, so a chart costs at most 1 Alpha Vantage call a day."""
+    return [{"date": d, "close": c} for d, c in get_daily_closes(ticker)]
+
+
 def compute_rsi(closes: list[float], period: int = 14) -> float | None:
     """Wilder's RSI."""
     if len(closes) <= period:

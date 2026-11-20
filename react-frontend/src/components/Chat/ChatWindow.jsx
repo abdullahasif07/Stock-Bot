@@ -90,7 +90,8 @@ function ChatWindow({ status, onActivity }) {
             choiceFor: 'chat', original_intent: data.original_intent,
           });
         } else {
-          await streamInto(sessionId, response);
+          const ticker = response.headers.get('X-Ticker');
+          await streamInto(sessionId, response, ticker ? { ticker } : {});
         }
       } catch (err) {
         fail(sessionId, err);
@@ -242,6 +243,7 @@ function ChatWindow({ status, onActivity }) {
                 role={msg.role}
                 text={msg.text}
                 error={msg.error}
+                ticker={msg.ticker}
                 choices={msg.choices}
                 disabled={!!loading}
                 onChoice={(choice) => handleChoice(msg, choice)}

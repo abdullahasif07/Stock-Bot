@@ -44,15 +44,16 @@ async def resolve_ticker(entity: str | None, ticker_guess: str | None) -> tuple[
 
 
 async def handle_message(message: str, history: list[dict], context: dict):
-    """Returns ("clarification", dict) or ("stream", async iterator)."""
+    """Returns ("clarification", dict, {}) or ("stream", async iterator, meta).
+    meta carries the ticker for price answers so the UI can draw a chart."""
     history_text = gemini.format_history(history)
 
     if context.get("awaiting_clarification"):
         intent = context.get("original_intent", "get_specific_data")
         ticker = message.strip().upper()
         if not TICKER_RE.match(ticker):
-            return "stream", _single("Please pick one of the suggested tickers.")
-        return "stream", _stock_answer(intent, ticker, ticker, message)
+            return "stream", _single("Please pick one of the suggested tickers."), {}
+        return "stream", _stock_answer(intent, ticker, ticker, message), _meta(intent, ticker)
 
     intent_data = await gemini.generate_json(prompts.intent_classification(history_text, message),
                                              model=GEMINI_FAST_MODEL)
@@ -61,7 +62,7 @@ async def handle_message(message: str, history: list[dict], context: dict):
 
     if intent in STOCK_INTENTS:
         if not entity and not intent_data.get("ticker"):
-            return "stream", _single(MSG_NEED_STOCK_NAME)
+            return "stream", _single(MSG_NEED_STOCK_NAME), {}
         ticker, choices = await resolve_ticker(entity, intent_data.get("ticker"))
         if not ticker and choices:
             return "clarification", {
@@ -69,13 +70,17 @@ async def handle_message(message: str, history: list[dict], context: dict):
                 "message": MSG_CLARIFICATION.format(entity=entity),
                 "choices": choices,
                 "original_intent": intent,
-            }
+            }, {}
         if not ticker:
-            return "stream", _single(f"I couldn't find a US-listed ticker for \"{entity}\".")
-        return "stream", _stock_answer(intent, ticker, entity or ticker, message)
+            return "stream", _single(f"I couldn't find a US-listed ticker for \"{entity}\"."), {}
+        return "stream", _stock_answer(intent, ticker, entity or ticker, message), _meta(intent, ticker)
 
     return "stream", gemini.stream(prompts.general_response(history_text, message),
-                                   system=prompts.ASSISTANT_SYSTEM, temperature=0.5)
+                                   system=prompts.ASSISTANT_SYSTEM, temperature=0.5), {}
+
+
+def _meta(intent: str, ticker: str) -> dict:
+    return {"ticker": ticker} if intent == "get_specific_data" else {}
 
 
 async def _stock_answer(intent: str, ticker: str, label: str, message: str) -> AsyncIterator[str]:

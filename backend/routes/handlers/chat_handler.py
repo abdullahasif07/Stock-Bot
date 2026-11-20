@@ -9,11 +9,12 @@ class ChatHandler:
 
     @staticmethod
     async def send_message(payload: ChatRequest):
-        kind, result = await chat_service.handle_message(
+        kind, result, meta = await chat_service.handle_message(
             payload.message,
             [m.model_dump() for m in payload.history],
             payload.context.model_dump(),
         )
         if kind == "clarification":
             return JSONResponse(content=result)
-        return await primed_stream(result)
+        headers = {"X-Ticker": meta["ticker"]} if meta.get("ticker") else None
+        return await primed_stream(result, headers)

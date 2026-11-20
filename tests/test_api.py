@@ -47,6 +47,22 @@ def test_stock_quote_flow_uses_quote_data(fake_gemini, monkeypatch):
     r = client.post("/api/chat", json={"message": "Apple price?"}, headers=XFF)
     assert r.status_code == 200
     assert "123.45" in fake_gemini["stream"][0]
+    assert r.headers["x-ticker"] == "AAPL"  # lets the UI draw a price chart
+
+
+def test_general_chat_has_no_ticker_header(fake_gemini):
+    r = client.post("/api/chat", json={"message": "What is a dividend?"}, headers=XFF)
+    assert "x-ticker" not in r.headers
+
+
+def test_price_history(monkeypatch):
+    monkeypatch.setattr(stock_service, "get_daily_closes", lambda t: [("2026-11-17", 10.0), ("2026-11-18", 11.5)])
+    r = client.get("/api/market/history/aapl", headers=XFF)
+    assert r.json() == {"ticker": "AAPL", "points": [
+        {"date": "2026-11-17", "close": 10.0}, {"date": "2026-11-18", "close": 11.5}]}
+    assert client.get("/api/market/history/not-a-ticker!", headers=XFF).status_code == 400
+    monkeypatch.setattr(stock_service, "get_daily_closes", lambda t: [])
+    assert client.get("/api/market/history/ZZZZ", headers=XFF).status_code == 404
 
 
 def test_clarification_returns_json(fake_gemini, monkeypatch):
