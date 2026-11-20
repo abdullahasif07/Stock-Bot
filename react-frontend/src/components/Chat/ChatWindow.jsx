@@ -9,11 +9,13 @@ import '../../styles/ChatWindow.css';
 
 const HISTORY_LIMIT = 8;
 
+// Each example shows off one feature that works on the free API tiers.
+// NVDA is pre-indexed in the Docker image, so that 10-K opens instantly.
 const EXAMPLES = [
-  { label: "What's Apple's stock price?", text: "What's Apple's stock price right now?" },
-  { label: 'Outlook for NVIDIA', text: "What's your outlook for NVIDIA stock?" },
-  { label: 'Explain the P/E ratio', text: 'Explain the P/E ratio like I am new to investing.' },
-  { label: "Analyze Amazon's 10-K", rag: 'Amazon' },
+  { label: "Apple's stock price", hint: 'Live quote + price chart', text: "What's Apple's stock price right now?" },
+  { label: "Analyze NVIDIA's 10-K", hint: 'Cited answers from the SEC filing', rag: 'NVDA' },
+  { label: 'Explain the P/E ratio', hint: 'General finance Q&A', text: 'Explain the P/E ratio like I am new to investing.' },
+  { label: 'Pick any company', hint: 'Latest 10-K from SEC EDGAR, or upload a PDF', rag: null },
 ];
 
 const RAG_SUGGESTIONS = [
@@ -195,7 +197,7 @@ function ChatWindow({ status, onActivity }) {
     handleSend(text);
   };
 
-  const handleExample = (ex) => (ex.rag ? startRag(ex.rag) : handleSend(ex.text));
+  const handleExample = (ex) => ('rag' in ex ? startRag(ex.rag) : handleSend(ex.text));
 
   const aiLeft = status?.budgets?.ai_requests;
 
@@ -213,7 +215,7 @@ function ChatWindow({ status, onActivity }) {
           <h1>StockBot <span className="demo-badge">Live demo</span></h1>
           <div className="header-controls">
             <span>
-              {rag?.doc ? `Analyzing: ${rag.doc.title}` : 'Live quotes · AI outlooks · 10-K analysis'}
+              {rag?.doc ? `Analyzing: ${rag.doc.title}` : 'Live quotes · Price charts · 10-K analysis'}
             </span>
             {aiLeft && (
               <span className="quota" title="Shared daily budget for this public demo (resets 00:00 UTC)">
@@ -232,7 +234,10 @@ function ChatWindow({ status, onActivity }) {
               </p>
               <div className="example-grid">
                 {EXAMPLES.map(ex => (
-                  <button key={ex.label} className="example-btn" onClick={() => handleExample(ex)}>{ex.label}</button>
+                  <button key={ex.label} className="example-btn example-card" onClick={() => handleExample(ex)}>
+                    <span className="example-label">{ex.label}</span>
+                    <span className="example-hint">{ex.hint}</span>
+                  </button>
                 ))}
               </div>
             </div>
