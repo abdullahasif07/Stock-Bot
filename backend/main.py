@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from google.genai import errors as genai_errors
 
@@ -124,11 +124,16 @@ if os.path.isdir(assets_dir):
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
 
-@app.get("/{full_path:path}", include_in_schema=False)
+@app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
 async def serve_spa(full_path: str):
-    candidate = os.path.normpath(os.path.join(BUILD_DIR, full_path))
-    if full_path and candidate.startswith(BUILD_DIR + os.sep) and os.path.isfile(candidate):
-        return FileResponse(candidate)  # favicon, manifest, etc.
+    """The SPA has no client-side routes, so only "/" serves index.html. Anything
+    else that isn't a real build file (bot scans for /wp-login.php, /.env, ...)
+    gets a plain 404 instead of the app page."""
+    if full_path:
+        candidate = os.path.normpath(os.path.join(BUILD_DIR, full_path))
+        if candidate.startswith(BUILD_DIR + os.sep) and os.path.isfile(candidate):
+            return FileResponse(candidate)  # favicon, manifest, etc.
+        return PlainTextResponse("Not found", status_code=404)
     index_path = os.path.join(BUILD_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)

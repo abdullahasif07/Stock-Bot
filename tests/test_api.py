@@ -22,6 +22,17 @@ def test_unknown_api_route_is_json_404():
     assert r.status_code == 404 and r.json() == {"detail": "Not found"}
 
 
+def test_scanner_paths_are_404(tmp_path, monkeypatch):
+    (tmp_path / "index.html").write_text("<html>app</html>")
+    (tmp_path / "favicon.ico").write_bytes(b"ico")
+    monkeypatch.setattr(main, "BUILD_DIR", str(tmp_path))
+    assert client.get("/").text == "<html>app</html>"
+    assert client.head("/").status_code == 200
+    assert client.get("/favicon.ico").status_code == 200
+    for path in ("/wp-login.php", "/.env", "/.git/config", "/admin", "/../etc/passwd"):
+        assert client.get(path).status_code == 404, path
+
+
 def test_general_chat_streams(fake_gemini):
     r = client.post("/api/chat", json={"message": "What is a dividend?", "history": []}, headers=XFF)
     assert r.status_code == 200
