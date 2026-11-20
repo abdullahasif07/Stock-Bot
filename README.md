@@ -78,7 +78,7 @@ Interactive API docs are at `http://localhost:8001/docs`. Use another port with 
 The app ships as **one Docker image**: FastAPI serves both the API and the built React app, so there's no CORS setup and only one URL to share.
 
 ### Your own server: Docker + Caddy (what the live demo uses)
-[`deploy/`](deploy/README.md) has a Compose file and a Caddy site config for running StockBot on a small VPS behind an existing Caddy reverse proxy, with automatic HTTPS and no published ports. GitHub Actions builds the image and pushes it to GHCR (`.github/workflows/docker-publish.yml`), so the server only pulls it. See [deploy/README.md](deploy/README.md) for the step-by-step guide.
+[`deploy/`](deploy/README.md) has a Compose file and a Caddy site config for running StockBot on a small VPS behind an existing Caddy reverse proxy, with automatic HTTPS and no published ports. GitHub Actions (`.github/workflows/ci.yml`) runs the tests, then builds the image and pushes it to GHCR only if they pass, then deploys it to the server over SSH, so the server never builds anything. See [deploy/README.md](deploy/README.md) for the step-by-step guide.
 
 ### AWS App Runner
 ```bash

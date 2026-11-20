@@ -58,7 +58,7 @@ Optionally also set `DEMO_ACCESS_CODE=...` to gate the demo behind a code. `chmo
 
 There are two ways to get the image.
 
-**Option A: build on GitHub (recommended for this 2-vCPU box).** `.github/workflows/docker-publish.yml` builds and pushes `ghcr.io/abdullahasif07/stock-bot:latest` on every push to `main`.
+**Option A: build on GitHub (recommended for this 2-vCPU box).** `.github/workflows/ci.yml` builds and pushes `ghcr.io/abdullahasif07/stock-bot:latest` on every push to `main`, after the tests pass.
 - After the first run, go to GitHub → your profile → Packages → `stock-bot` → Package settings → change visibility to **Public**. Otherwise, run `docker login ghcr.io` on the server with a token that has `read:packages`.
 - Then on the server:
   ```bash
@@ -90,6 +90,28 @@ The reload has no downtime. Caddy fetches the TLS certificate automatically, the
 ---
 
 ## Updating
+
+### Automatic (GitHub Actions)
+
+Every push to `main` runs the tests, publishes the image if they pass, then SSHes into the server and runs `git pull`, `docker compose pull` and `docker compose up -d --wait`. The deploy job is skipped until these **repository secrets** exist (GitHub → Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `DEPLOY_HOST` | the server's IP, e.g. `178.105.95.25` |
+| `DEPLOY_USER` | the Linux user that owns `/opt/stockbot` and can run `docker` |
+| `DEPLOY_SSH_KEY` | a private key whose public half is in that user's `~/.ssh/authorized_keys` |
+
+Create a dedicated key for this, on your laptop:
+
+```bash
+ssh-keygen -t ed25519 -f stockbot_deploy -N "" -C "github-actions-stockbot"
+ssh-copy-id -i stockbot_deploy.pub <user>@178.105.95.25
+cat stockbot_deploy        # paste this into the DEPLOY_SSH_KEY secret, then delete both files
+```
+
+The GHCR package must be public, or the server must be logged in to `ghcr.io` (see step 3).
+
+### Manual
 
 ```bash
 cd /opt/stockbot
